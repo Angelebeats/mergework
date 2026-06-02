@@ -10,10 +10,13 @@ from fastapi.responses import JSONResponse
 from app.ledger.service import LedgerError
 
 MCPToolHandler = Callable[[str, str, dict[str, Any]], str | dict[str, Any]]
+MCPResourceHandler = Callable[[str, str], str | dict[str, Any]]
 MCP_PROTOCOL_VERSION = "2025-06-18"
 MCP_SERVER_INFO = {"name": "mergework", "version": "0.1.0"}
 
+
 MCP_TOOLS: list[dict[str, Any]] = [
+
     {
         "name": "list_bounties",
         "description": (
@@ -246,8 +249,18 @@ MCP_TOOLS: list[dict[str, Any]] = [
     },
 ]
 
+MCP_RESOURCES: list[dict[str, Any]] = [
+    {
+        "uri": "bounties://active",
+        "name": "Active Bounties",
+        "description": "List of all active MRWK bounties",
+        "mimeType": "application/json",
+    }
+]
+
 
 def _jsonrpc_error(response_id: Any, code: int, message: str) -> dict[str, Any]:
+
     return {"jsonrpc": "2.0", "id": response_id, "error": {"code": code, "message": message}}
 
 
@@ -308,7 +321,10 @@ def _tool_result_response(response_id: Any, tool_result: str | dict[str, Any]) -
 
 
 async def handle_mcp_request(
-    request: Request, database_url: str, call_tool: MCPToolHandler
+    request: Request,
+    database_url: str,
+    call_tool: MCPToolHandler,
+    call_resource: MCPResourceHandler,
 ) -> dict[str, Any] | JSONResponse:
     try:
         payload = await request.json()
@@ -326,7 +342,26 @@ async def handle_mcp_request(
     if method == "tools/list":
         return {"jsonrpc": "2.0", "id": response_id, "result": {"tools": MCP_TOOLS}}
 
+    if method == "resources/list":
+        return {"jsonrpc": "2.0", "id": response_id, "result": {"resources": MCP_RESOURCES}}
+
+    if method == "resources/read":
+        params = payload.get("params", {})
+        uri = params.get("uri")
+        if not uri:
+            return _jsonrpc_error(response_id, -32602, "uri is required")
+        try:
+            content = call_resource(database_url, uri)
+            return {
+                "jsonrpc": "2.0",
+                "id": response_id,
+                "result": {"contents": [{"uri": uri, "mimeType": "application/json", "text": content}]},
+            }
+        except (ValueError, KeyError, HTTPException):
+            return _jsonrpc_error(response_id, -32602, "invalid resource uri")
+
     if method != "tools/call":
+
         return _jsonrpc_error(response_id, -32601, "unknown method")
 
     params = payload.get("params")
