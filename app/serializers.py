@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 try:
     from datetime import UTC
 except ImportError:
-    UTC = timezone.utc
+    UTC = timezone(timedelta(0))
 from decimal import Decimal
 from typing import Any
 
